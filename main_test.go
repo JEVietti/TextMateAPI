@@ -39,7 +39,8 @@ func TestTodos(t *testing.T) {
 
 }
 
-func TestGetScore(t *testing.T) {
+func TestEmptyGetScore(t *testing.T) {
+	var ratingResult models.Ratings
 	ctx = context.Background()
 	var err error
 	// Creates a client.
@@ -48,12 +49,50 @@ func TestGetScore(t *testing.T) {
 		log.Fatalf("Failed to create client: %v", err)
 	}
 	data := url.Values{}
-	data.Set("Input", "foo")
+	data.Set("Input", "")
+	data.Add("Count", "0")
+
+	r, _ := http.NewRequest("POST", "/api/sentiment", strings.NewReader(data.Encode())) // <-- URL-encoded payload
+	r.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	response := httptest.NewRecorder()
+	NewRouter().ServeHTTP(response, r)
+	//fmt.Println(response)
+	body, _ := ioutil.ReadAll(response.Body)
+	json.Unmarshal(body, &ratingResult)
+	fmt.Println(ratingResult.Length)
+	fmt.Println(ratingResult.Sentiment.Score)
+
+	for index, element := range ratingResult.Sentiment.SentimentStruct.GetSentences() {
+		fmt.Printf("Sentence %x : %s has a sentiment score of %.1f\n", index, element.GetText().GetContent(), element.GetSentiment().GetScore())
+	}
+	assert.Equal(t, 100, ratingResult.RatingScore, "Empty Message starts at 100 score.")
+}
+
+func TestNeutralGetScore(t *testing.T) {
+	var ratingResult models.Ratings
+	ctx = context.Background()
+	var err error
+	// Creates a client.
+	client, err = language.NewClient(ctx)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
+	data := url.Values{}
+	data.Set("Input", "")
 	data.Add("Count", "2")
 
 	r, _ := http.NewRequest("POST", "/api/sentiment", strings.NewReader(data.Encode())) // <-- URL-encoded payload
 	r.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 	response := httptest.NewRecorder()
 	NewRouter().ServeHTTP(response, r)
-	fmt.Println(response)
+	//fmt.Println(response)
+	body, _ := ioutil.ReadAll(response.Body)
+	json.Unmarshal(body, &ratingResult)
+	fmt.Println(ratingResult.Length)
+	fmt.Println(ratingResult.Sentiment.Score)
+
+	for index, element := range ratingResult.Sentiment.SentimentStruct.GetSentences() {
+		fmt.Printf("Sentence %x : %s has a sentiment score of %.1f\n", index, element.GetText().GetContent(), element.GetSentiment().GetScore())
+	}
+	assert.Equal(t, 100, ratingResult.RatingScore, "Empty Message starts at 100 score.")
 }

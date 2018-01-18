@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/schema"
@@ -40,22 +41,14 @@ func TodoShow(w http.ResponseWriter, r *http.Request) {
 
 //Get Score is the handler for calculating the relationship between two users using many
 //child functions such as GetRatings for their sentiment scores,
-func GetScore(w http.ResponseWriter, r *http.Request) {
+func GetScore(w http.ResponseWriter, req *http.Request) {
 	var score models.Ratings
-
-	err := r.ParseForm()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	log.Println("r.PostForm", r.PostForm)
-	log.Println("r.Form", r.Form)
 
 	var input models.RatingInput
 	//fmt.Println(r.PostForm)
 	// r.PostForm is a map of our POST form values
-	err = decoder.Decode(&input, r.PostForm)
-
+	decoder := json.NewDecoder(req.Body)
+	err := decoder.Decode(&input)
 	if err != nil {
 		// Handle error
 		panic(err)
@@ -82,7 +75,7 @@ func GetScore(w http.ResponseWriter, r *http.Request) {
 
 	score.Length = input.Count
 	score.RatingScore = CalculateRelationshipScore(avgLength, sentiment.DocumentSentiment.GetScore(), sentiment.DocumentSentiment.GetMagnitude())
-	score.Sentiment = models.SentimentScore{sentiment, sentiment.DocumentSentiment.GetScore(), "nil", "nil"}
+	score.Sentiment = models.SentimentScore{SentimentStruct: sentiment, Score: sentiment.DocumentSentiment.GetScore(), BestMessage: "nil", WorstMessage: "nil"}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
@@ -102,15 +95,20 @@ func GetAverageLength(input models.RatingInput, avgLength chan float32) {
 }
 
 func CalculateAvgLength(input models.RatingInput) float32 {
-	text := input.Input
-	fmt.Println(text)
+	text := strings.Join(input.Input, " ")
 	return float32(len(text)) / float32(input.Count)
 }
 
 //
 func CalculateRelationshipScore(avgLength float32, sentimentScore float32, sentimentMagnitude float32) float32 {
 	fmt.Printf("Calculating Relationship score based on average length of %.1f, sentiment score of %.1f, and magnitude of %.1f.\n", avgLength, sentimentScore, sentimentMagnitude)
-	return 100 / ((sentimentScore / sentimentMagnitude) * avgLength)
+	score := (1 - (avgLength / 100) + (sentimentScore * sentimentMagnitude)) * 100
+	if score >= 100.0 {
+		return 100.0
+	} else if score <= 0.0 {
+		return 0.0
+	}
+	return score
 }
 
 // GetSentiment gets the Sentiment Rating Score for a list of text or single messages
@@ -119,12 +117,12 @@ func GetSentiment(input models.RatingInput, sentimentScore chan *languagepb.Anal
 
 	// Sets the text to analyze.
 	text := input.Input
-
+	messages := strings.Join(text, " ")
 	// Detects the sentiment of the text.
 	sentiment, err := client.AnalyzeSentiment(ctx, &languagepb.AnalyzeSentimentRequest{
 		Document: &languagepb.Document{
 			Source: &languagepb.Document_Content{
-				Content: text,
+				Content: messages,
 			},
 			Type:     languagepb.Document_PLAIN_TEXT,
 			Language: "en",

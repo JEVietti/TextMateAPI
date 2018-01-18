@@ -8,7 +8,7 @@ import (
 type Ratings struct {
 	RatingScore float32        `json:"score"`
 	Length      int            `json:"length"`
-	Sentiment   SentimentScore `json:"sentiment"`
+	Sentiment   SentimentScore `json:"sentimentScore"`
 }
 
 //Sentiment Score is
@@ -20,6 +20,6 @@ type SentimentScore struct {
 }
 
 type RatingInput struct {
-	Input string `schema:"Input"`
-	Count int    `schema:"Count"`
+	Input []string `schema:"Input"`
+	Count int      `schema:"Count"`
 }
