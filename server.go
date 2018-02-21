@@ -1,9 +1,12 @@
 package main
 
 import (
+
+	// Imports the Google Cloud Natural Language API client package.
+
 	"log"
 	"net/http"
-	// Imports the Google Cloud Natural Language API client package.
+
 	language "cloud.google.com/go/language/apiv1"
 	"golang.org/x/net/context"
 )
@@ -11,14 +14,17 @@ import (
 var ctx context.Context
 var client *language.Client
 
+//Google Server
+/*
+func init() {
+	router := NewRouter()
+
+	http.Handle("/", router)
+}
+*/
+//Normal Server
+
 func main() {
-	ctx = context.Background()
-	var err error
-	// Creates a client.
-	client, err = language.NewClient(ctx)
-	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
-	}
 
 	router := NewRouter()
 

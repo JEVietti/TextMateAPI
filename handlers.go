@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strings"
 
+	language "cloud.google.com/go/language/apiv1"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/schema"
-	"github.com/jevietti/textmate/models"
+	"google.golang.org/appengine"
 	languagepb "google.golang.org/genproto/googleapis/cloud/language/v1"
 )
 
@@ -21,9 +23,9 @@ func Index(w http.ResponseWriter, r *http.Request) {
 }
 
 func TodoIndex(w http.ResponseWriter, r *http.Request) {
-	todos := models.Todos{
-		models.Todo{Name: "Write presentation"},
-		models.Todo{Name: "Host meetup"},
+	todos := Todos{
+		Todo{Name: "Write presentation"},
+		Todo{Name: "Host meetup"},
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -33,6 +35,7 @@ func TodoIndex(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+//
 func TodoShow(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	todoId := vars["todoId"]
@@ -42,15 +45,21 @@ func TodoShow(w http.ResponseWriter, r *http.Request) {
 //Get Score is the handler for calculating the relationship between two users using many
 //child functions such as GetRatings for their sentiment scores,
 func GetScore(w http.ResponseWriter, req *http.Request) {
-	var score models.Ratings
+	ctx = appengine.NewContext(req)
+	var err error
+	// Creates a client.
+	client, err = language.NewClient(ctx)
 
-	var input models.RatingInput
-	//fmt.Println(r.PostForm)
-	// r.PostForm is a map of our POST form values
-	decoder := json.NewDecoder(req.Body)
-	err := decoder.Decode(&input)
 	if err != nil {
-		// Handle error
+		log.Fatalf("Failed to create client: %v", err)
+	}
+
+	var score Ratings
+	var input RatingInput
+
+	decoder := json.NewDecoder(req.Body)
+	err = decoder.Decode(&input)
+	if err != nil {
 		panic(err)
 	}
 
@@ -60,23 +69,13 @@ func GetScore(w http.ResponseWriter, req *http.Request) {
 	go GetAverageLength(input, avgLengthChannel)
 	go GetSentiment(input, sentimentChannel)
 
-	avgLength, _ := <-avgLengthChannel
 	sentiment, _ := <-sentimentChannel
-
-	for index, element := range sentiment.GetSentences() {
-		fmt.Printf("Sentence %x : %s has a sentiment score of %.1f\n", index, element.GetText().GetContent(), element.GetSentiment().GetScore())
-	}
-
-	if sentiment.DocumentSentiment.Score >= 0 {
-		fmt.Printf("Sentiment: positive  %.1f.\n", sentiment.DocumentSentiment.Score)
-	} else {
-		fmt.Printf("Sentiment: negative %.1f.\n", sentiment.DocumentSentiment.Score)
-	}
+	avgLength, _ := <-avgLengthChannel
 
 	score.Length = input.Count
 	score.RatingScore = CalculateRelationshipScore(avgLength, sentiment.DocumentSentiment.GetScore(), sentiment.DocumentSentiment.GetMagnitude())
-	score.Sentiment = models.SentimentScore{SentimentStruct: sentiment, Score: sentiment.DocumentSentiment.GetScore(), BestMessage: "nil", WorstMessage: "nil"}
-
+	score.Sentiment = SentimentScore{SentimentStruct: sentiment, Score: sentiment.DocumentSentiment.GetScore(), BestMessage: "nil", WorstMessage: "nil"}
+	fmt.Printf("Relationship score is %.1f.\n", score.RatingScore)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 
@@ -88,13 +87,14 @@ func GetScore(w http.ResponseWriter, req *http.Request) {
 
 // GetAverageLength is a helper function for the RelationshipAlgorithm
 // to find the avg length of a message for the set of messages sent
-func GetAverageLength(input models.RatingInput, avgLength chan float32) {
+func GetAverageLength(input RatingInput, avgLength chan float32) {
 
 	avgLength <- CalculateAvgLength(input)
 	close(avgLength)
 }
 
-func CalculateAvgLength(input models.RatingInput) float32 {
+//
+func CalculateAvgLength(input RatingInput) float32 {
 	text := strings.Join(input.Input, " ")
 	return float32(len(text)) / float32(input.Count)
 }
@@ -102,7 +102,13 @@ func CalculateAvgLength(input models.RatingInput) float32 {
 //
 func CalculateRelationshipScore(avgLength float32, sentimentScore float32, sentimentMagnitude float32) float32 {
 	fmt.Printf("Calculating Relationship score based on average length of %.1f, sentiment score of %.1f, and magnitude of %.1f.\n", avgLength, sentimentScore, sentimentMagnitude)
-	score := (1 - (avgLength / 100) + (sentimentScore * sentimentMagnitude)) * 100
+	score := (1 - (avgLength / 100)) * 25
+	sentiment := (sentimentScore * sentimentMagnitude) + sentimentMagnitude
+	if sentiment < -0.5 {
+		score += sentiment
+	} else {
+		score += float32(math.Abs(float64(sentiment)) * 75)
+	}
 	if score >= 100.0 {
 		return 100.0
 	} else if score <= 0.0 {
@@ -113,8 +119,7 @@ func CalculateRelationshipScore(avgLength float32, sentimentScore float32, senti
 
 // GetSentiment gets the Sentiment Rating Score for a list of text or single messages
 // this is done through sentiment analysis prodvided by Google Cloud NLP Sentiment Analysis
-func GetSentiment(input models.RatingInput, sentimentScore chan *languagepb.AnalyzeSentimentResponse) {
-
+func GetSentiment(input RatingInput, sentimentScore chan *languagepb.AnalyzeSentimentResponse) {
 	// Sets the text to analyze.
 	text := input.Input
 	messages := strings.Join(text, " ")
@@ -132,7 +137,6 @@ func GetSentiment(input models.RatingInput, sentimentScore chan *languagepb.Anal
 	if err != nil {
 		log.Fatalf("Failed to analyze text: %v", err)
 	}
-
 	sentimentScore <- sentiment
 	close(sentimentScore)
 }
