@@ -11,6 +11,7 @@ import (
 	language "cloud.google.com/go/language/apiv1"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/schema"
+	models "github.com/jevietti/textmate/models"
 	"google.golang.org/appengine"
 	languagepb "google.golang.org/genproto/googleapis/cloud/language/v1"
 )
@@ -19,7 +20,7 @@ var decoder = schema.NewDecoder()
 
 func Index(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(200)
-	fmt.Fprintln(w, "Welcome!")
+	//fmt.Fprintln(w, "Welcome!")
 }
 
 func TodoIndex(w http.ResponseWriter, r *http.Request) {
@@ -38,7 +39,7 @@ func TodoIndex(w http.ResponseWriter, r *http.Request) {
 //
 func TodoShow(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	todoId := vars["todoId"]
+	todoId := vars["todoID"]
 	fmt.Fprintln(w, "Todo show:", todoId)
 }
 
@@ -54,8 +55,8 @@ func GetScore(w http.ResponseWriter, req *http.Request) {
 		log.Fatalf("Failed to create client: %v", err)
 	}
 
-	var score Ratings
-	var input RatingInput
+	var score models.Ratings
+	var input models.RatingInput
 
 	decoder := json.NewDecoder(req.Body)
 	err = decoder.Decode(&input)
@@ -63,8 +64,8 @@ func GetScore(w http.ResponseWriter, req *http.Request) {
 		panic(err)
 	}
 
-	avgLengthChannel := make(chan float32)
-	sentimentChannel := make(chan *languagepb.AnalyzeSentimentResponse)
+	avgLengthChannel := make(chan float32, 1)
+	sentimentChannel := make(chan *languagepb.AnalyzeSentimentResponse, 1)
 
 	go GetAverageLength(input, avgLengthChannel)
 	go GetSentiment(input, sentimentChannel)
@@ -74,8 +75,8 @@ func GetScore(w http.ResponseWriter, req *http.Request) {
 
 	score.Length = input.Count
 	score.RatingScore = CalculateRelationshipScore(avgLength, sentiment.DocumentSentiment.GetScore(), sentiment.DocumentSentiment.GetMagnitude())
-	score.Sentiment = SentimentScore{SentimentStruct: sentiment, Score: sentiment.DocumentSentiment.GetScore(), BestMessage: "nil", WorstMessage: "nil"}
-	fmt.Printf("Relationship score is %.1f.\n", score.RatingScore)
+	score.Sentiment = models.SentimentScore{SentimentStruct: sentiment, Score: sentiment.DocumentSentiment.GetScore(), BestMessage: "nil", WorstMessage: "nil"}
+	////fmt.Printf("Relationship score is %.1f.\n", score.RatingScore)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 
@@ -87,21 +88,21 @@ func GetScore(w http.ResponseWriter, req *http.Request) {
 
 // GetAverageLength is a helper function for the RelationshipAlgorithm
 // to find the avg length of a message for the set of messages sent
-func GetAverageLength(input RatingInput, avgLength chan float32) {
+func GetAverageLength(input models.RatingInput, avgLength chan float32) {
 
 	avgLength <- CalculateAvgLength(input)
 	close(avgLength)
 }
 
 //
-func CalculateAvgLength(input RatingInput) float32 {
+func CalculateAvgLength(input models.RatingInput) float32 {
 	text := strings.Join(input.Input, " ")
 	return float32(len(text)) / float32(input.Count)
 }
 
 //
 func CalculateRelationshipScore(avgLength float32, sentimentScore float32, sentimentMagnitude float32) float32 {
-	fmt.Printf("Calculating Relationship score based on average length of %.1f, sentiment score of %.1f, and magnitude of %.1f.\n", avgLength, sentimentScore, sentimentMagnitude)
+	////fmt.Printf("Calculating Relationship score based on average length of %.1f, sentiment score of %.1f, and magnitude of %.1f.\n", avgLength, sentimentScore, sentimentMagnitude)
 	score := (1 - (avgLength / 100)) * 25
 	sentiment := (sentimentScore * sentimentMagnitude) + sentimentMagnitude
 	if sentiment < -0.5 {
@@ -119,7 +120,7 @@ func CalculateRelationshipScore(avgLength float32, sentimentScore float32, senti
 
 // GetSentiment gets the Sentiment Rating Score for a list of text or single messages
 // this is done through sentiment analysis prodvided by Google Cloud NLP Sentiment Analysis
-func GetSentiment(input RatingInput, sentimentScore chan *languagepb.AnalyzeSentimentResponse) {
+func GetSentiment(input models.RatingInput, sentimentScore chan *languagepb.AnalyzeSentimentResponse) {
 	// Sets the text to analyze.
 	text := input.Input
 	messages := strings.Join(text, " ")
